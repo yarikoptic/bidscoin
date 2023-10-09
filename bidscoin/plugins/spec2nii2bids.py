@@ -181,6 +181,7 @@ def bidscoiner_plugin(session: Path, bidsmap: dict, bidsses: Path) -> None:
 
     # Get started and see what dataformat we have
     options     = bidsmap['Options']['plugins']['spec2nii2bids']
+    anon        = options.get('anon',OPTIONS['anon']) in ('y','yes')
     datasource  = bids.get_datasource(session, {'spec2nii2bids':options})
     dataformat  = datasource.dataformat
     sourcefiles = [file for file in session.rglob('*') if is_sourcefile(file)]
@@ -254,9 +255,12 @@ def bidscoiner_plugin(session: Path, bidsmap: dict, bidsses: Path) -> None:
         else:
             LOGGER.exception(f"Unsupported dataformat: {dataformat}")
             return
-        command = options.get("command", "spec2nii")
+        command = options.get('command', 'spec2nii')
         if bcoin.run_command(f'{command} {dformat} -j -f "{bidsname}" -o "{outfolder}" {args} {arg} "{sourcefile}"'):
-            if not list(outfolder.glob(f"{bidsname}.nii*")): continue
+            niifile = list(outfolder.glob(f"{bidsname}.nii*"))
+            if not niifile: continue
+            if anon:
+                bcoin.run_command(f'{command} anon "{niifile[0]}"')
 
         # Load / copy over and adapt the newly produced json sidecar-file (NB: assumes every NIfTI-file comes with a json-file)
         metadata = bids.poolmetadata(sourcefile, sidecar, run['meta'], options['meta'], datasource)
@@ -277,7 +281,7 @@ def bidscoiner_plugin(session: Path, bidsmap: dict, bidsses: Path) -> None:
                 acq_time = f"1925-01-01T{metadata.get('AcquisitionTime','')}"
             try:
                 acq_time = dateutil.parser.parse(acq_time)
-                if options.get('anon',OPTIONS['anon']) in ('y','yes'):
+                if anon:
                     acq_time = acq_time.replace(year=1925, month=1, day=1)      # Privacy protection (see BIDS specification)
                 acq_time = acq_time.isoformat()
             except Exception as jsonerror:
@@ -313,7 +317,7 @@ def bidscoiner_plugin(session: Path, bidsmap: dict, bidsses: Path) -> None:
     elif age.endswith('M'): age = float(age.rstrip('M')) / 12
     elif age.endswith('Y'): age = float(age.rstrip('Y'))
     if age:
-        if options.get('anon',OPTIONS['anon']) in ('y','yes'):
+        if anon:
             age = int(float(age))
         personals['age'] = str(age)
 
